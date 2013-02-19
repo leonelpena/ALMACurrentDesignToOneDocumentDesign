@@ -18,7 +18,8 @@ public class Main {
 		try {
 			//mongoManager = new MongoManager("localhost",
 			mongoManager = new MongoManager("mongo-r1.osf.alma.cl",
-					"OneDocumentPerComponentPerDay", "monitorData");
+					//"OneDocumentPerComponentPerDay", "monitorData");
+					"OneMonitorPointPerDayPerDocument", "monitorData");
 			mongoManager.setQueue(queue);
 		} catch (UnknownHostException e1) {
 			e1.printStackTrace();
@@ -27,7 +28,7 @@ public class Main {
 		Thread hiloMongo = new Thread(mongoManager);
 		hiloMongo.start();
 
-		try {
+		/*try {
 			Query query = new Query("mongo-r1.osf.alma.cl", "MONDB",
 					"monitorPoints");
 			query.setQueue(queue);
@@ -47,7 +48,7 @@ public class Main {
 		} catch (UnknownHostException e) {
 			e.printStackTrace();
 			System.exit(-1);
-		}
+		}*/
 	}
 
 }

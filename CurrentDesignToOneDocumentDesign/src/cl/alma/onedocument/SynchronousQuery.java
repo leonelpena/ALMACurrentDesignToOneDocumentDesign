@@ -15,13 +15,13 @@ import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
 import com.mongodb.Mongo;
 
-public class Query {
+public class SynchronousQuery {
 	private Mongo _mongo;
 	private DB _database;
 	private DBCollection _collection;
-	private LinkedBlockingQueue<DBObject> queue;
+	private DBCursor cursor;
 
-	public Query(String host, String dbname, String collection) 
+	public SynchronousQuery(String host, String dbname, String collection) 
 					throws UnknownHostException {
 
 		_mongo = new Mongo(host);
@@ -29,11 +29,7 @@ public class Query {
 		_collection = _database.getCollection(collection);
 	}
 
-	public void setQueue(LinkedBlockingQueue<DBObject> queue) {
-		this.queue = queue;
-	}
-
-	public void exportData() {
+	public DBCursor exportData() {
 		// The months in Gregorian Calendar start with 0
 		Calendar startDate = new GregorianCalendar(2012, 9-1, 01, 0, 0, 0);
 		Calendar endDate = new GregorianCalendar(2012, 9-1, 30, 23, 59, 59);
@@ -56,28 +52,15 @@ public class Query {
 		//BasicDBObject query = new BasicDBObject("_id", new ObjectId("50528be325d8b6dfbafd7ac2"));
 		//BasicDBObject query = new BasicDBObject("_id", new ObjectId("50529496a310ecc5da59531c"));
 
-		DBCursor cursor = _collection.find(query);
+		cursor = _collection.find(query);
 
 		//System.out.println("Collections: "+_database.getCollectionNames());
 		
 		//System.out.println("Error: "+_database.getLastError());
-		try {
-			int cont=0;
-			while(cursor.hasNext()) {
-				//System.out.println(cursor.next());
-				try {
-					queue.put(cursor.next());
-					cont++;
-					//Thread.sleep(5000);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-				//System.exit(0);
-			}
-			System.out.println("Total: "+cont);
-			//System.out.println("Query: "+query);
-		} finally {
-			cursor.close();
-		}
+		return cursor;
+	}
+	
+	public void closeCursor() {
+		cursor.close();
 	}
 }

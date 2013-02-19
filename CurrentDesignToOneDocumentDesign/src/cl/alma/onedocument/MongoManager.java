@@ -1,6 +1,7 @@
 package cl.alma.onedocument;
 
 import java.net.UnknownHostException;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
@@ -8,16 +9,24 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import org.apache.log4j.Logger;
+
 import com.mongodb.BasicDBObject;
 import com.mongodb.DB;
 import com.mongodb.DBCollection;
+import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
 import com.mongodb.Mongo;
 
 public class MongoManager implements Runnable {
+	private static final Logger log = Logger.getLogger(MongoManager.class);
+
 	private Mongo mongo;
 	private DB database;
-	private HashMap<String, DBCollection> mongoCollections;
+	//private HashMap<String, DBCollection> mongoCollections;
+	private HashMap<Integer, DBCollection> mongoCollections;
+	private DBCollection multipleCollection;
+	
 	private DBCollection collection;
 	private LinkedBlockingQueue<DBObject> queue;
 
@@ -26,7 +35,8 @@ public class MongoManager implements Runnable {
 
 		mongo = new Mongo(host);
 		database = mongo.getDB(dbname);
-		mongoCollections = new HashMap<String, DBCollection>(70);
+		//mongoCollections = new HashMap<String, DBCollection>(70);
+		mongoCollections = new HashMap<Integer, DBCollection>(70);
 		//collection = database.getCollection("monitorData");
 		collection = database.getCollection(coll);
 	}
@@ -34,17 +44,35 @@ public class MongoManager implements Runnable {
 	public void setQueue(LinkedBlockingQueue<DBObject> queue) {
 		this.queue = queue;
 	}
-	
+
 	public DBCollection getCollection(DocumentID id) {
 		//String key = id.getAntenna() + DocumentID.SEPARATOR + id.getComponent();
-		String key = id.toString();
+		//String key = id.toString();
+
+		// Using the month as the key
+		Integer key = id.getMonth();
 
 		if (mongoCollections.containsKey(key))
 			return mongoCollections.get(key);
 
+		BasicDBObject index = null;
+		if (!database.collectionExists("monitorData_"+key)) {
+			System.out.println("la coleccion no existe");
+			index = new BasicDBObject("metadata.date", 1);
+			index.append("metadata.monitorPoint", 1);
+			index.append("metadata.antenna", 1);
+			index.append("metadata.component", 1);
+		}
+
 		// if the collection does not exist, it will be created automatically
-		DBCollection c = database.getCollection("monData_"+key);
+		DBCollection c = database.getCollection("monitorData_"+key);
 		mongoCollections.put(key, c);
+		
+		if (index!=null) {
+			//c.createIndex(index);
+			c.ensureIndex(index);
+		}
+			
 		return c;
 	}
 
@@ -79,7 +107,11 @@ public class MongoManager implements Runnable {
 		//System.out.println("Document: "+document);
 		//System.out.println("Update Document: "+updateDocument);
 
-		collection.update(document, updateDocument, true, false);
+		//collection.update(document, updateDocument, true, false);
+		
+		// Codigo para usar colecciones mensuales.
+		multipleCollection = getCollection(metadata.getDocumentID());
+		multipleCollection.update(document, updateDocument, true, false);
 	}
 
 	/*public void update(DocumentID id, int hour, int minute, int second, 
@@ -135,9 +167,10 @@ public class MongoManager implements Runnable {
 		mongoManager.upsert(metadata, 14, 4, 6, "12345");
 	}
 
+	/*
 	@Override
 	public void run() {
-		int cont=0;
+		int cont=0, error=0;
 		try {
 			while (true) {
 				DBObject object = queue.take();
@@ -147,14 +180,18 @@ public class MongoManager implements Runnable {
 				//System.out.println("Set: "+mySet);
 				
 
-				/*if (myMap.get("date") instanceof Date) {
+				//if (myMap.get("date") instanceof Date) {
 					//System.out.println("Es instacia de DATE!!");
-				} else {
+				//} else {
 					//System.out.println("NO lo es!");
-				}*/
+				//}
 				
 				Calendar calendar = Calendar.getInstance();
-			    calendar.setTime((Date)myMap.get("date"));
+				try {
+					calendar.setTime((Date)myMap.get("date"));
+				} catch (NullPointerException e) {
+					System.err.println("Object: "+myMap);
+				}
 			    
 			    // ************************************************ //
 			    // Se añaden las tres horas de diferencia 			//
@@ -213,9 +250,127 @@ public class MongoManager implements Runnable {
 			}
 		} catch (InterruptedException e) {
 			
+		} catch (Throwable e) {
+			error++;
+			//System.err.println("Exception caught: "+e.getMessage());
+			log.error("Exception caught: "+e.getMessage());
 		} finally {
 			close();
 			System.out.println("Registros insertados: "+cont);
+			System.out.println("Errores: "+error);
 		}
+	}*/
+	
+	@Override
+	public void run() {
+		SynchronousQuery synQuery = null;
+		try {
+			synQuery = new SynchronousQuery("mongo-r1.osf.alma.cl", "MONDB",
+					"monitorPoints");
+		} catch (UnknownHostException e1) {
+			System.exit(-1);
+		}
+
+		DBCursor cursor = synQuery.exportData();
+
+		int cont=0, error=0;
+		while (cursor.hasNext()) {
+			try {
+				//DBObject object = queue.take();
+				DBObject object = cursor.next();
+	
+				//Set<String> mySet = object.keySet();
+				Map<String, Object> myMap = object.toMap();
+				//System.out.println("Set: "+mySet);
+				
+	
+				/*if (myMap.get("date") instanceof Date) {
+					//System.out.println("Es instacia de DATE!!");
+				} else {
+					//System.out.println("NO lo es!");
+				}*/
+				
+				Calendar calendar = Calendar.getInstance();
+				try {
+					calendar.setTime((Date)myMap.get("date"));
+				} catch (NullPointerException e) {
+					log.error("NullPointerException: "+myMap);
+					error++;
+				}
+			    
+			    // ************************************************ //
+			    // Se añaden las tres horas de diferencia 			//
+			    // con el servidor de mongo.						//
+			    // ************************************************	//
+			    calendar.add(Calendar.HOUR, 3);
+	
+			    int year = calendar.get(Calendar.YEAR);
+			    int month = calendar.get(Calendar.MONTH)+1;
+			    int day = calendar.get(Calendar.DAY_OF_MONTH);
+			    
+			    int hour = calendar.get(Calendar.HOUR_OF_DAY);
+			    int minute =  calendar.get(Calendar.MINUTE);
+			    int second =  calendar.get(Calendar.SECOND);
+			    
+			    //System.out.println("Map: "+myMap+",\n year: "+year+", month: "+
+			    	//	month+", day: "+day+", hour: "+hour+", minute: "+minute+
+			    		//", second: "+second);
+			    
+			    // We need to split the componentName that comes from the old schema.
+			    // The format is "CONTROL/DV10/FrontEnd/Cryostat".
+			    // We extract the antenna, component and subcomponent 
+			    // from it.
+			    String[] oldComponentName = ((String)myMap.get("componentName")).split("/");
+			    String antenna = oldComponentName[1];
+			    // Component and subcomponent are put together
+			    String component = null;
+			    
+			    // If the old ComponentName length is three it means there is
+			    // just a component, however, if the length is four
+			    // there is a component and subcomponent
+			    if (oldComponentName.length==3) {
+			    	component = oldComponentName[2];
+			    } else if (oldComponentName.length==4) {
+			    	component = oldComponentName[2]+"/"+oldComponentName[3];
+		    	} else {
+		    		log.error("Error detected in component name: "+myMap.get("componentName"));
+		    	}
+
+			    //if (oldComponentName.length>3) {
+			    	//component = oldComponentName[2]+"/"+oldComponentName[3];
+			    //} else {
+			    	//component = oldComponentName[2];
+			    //}
+			    
+			    String property = (String)myMap.get("propertyName");
+			    String monitorPoint = (String)myMap.get("monitorPointName");
+			    String location = (String)myMap.get("location");
+			    String serialNumber = (String)myMap.get("serialNumber");
+			    String monitorValue = (String)myMap.get("monitorValue");
+			    int index = Integer.parseInt(myMap.get("index").toString());
+			    int sampleTime = 0;
+	
+				DocumentID documentID = new DocumentID(year, month, day,
+						antenna, component, monitorPoint);
+				//Metadata metadata = new Metadata(documentID, "ASDF Property", "TFING",
+					//	"as76d6fh", 5, 2);
+				Metadata metadata = new Metadata(documentID, property, 
+						location, serialNumber, sampleTime, index);
+				
+				//mongoManager.upsert(metadata, 14, 4, 6, "12345");
+				upsert(metadata, hour, minute, second, monitorValue);
+				cont++;
+				//insert(record);
+			} catch (Throwable e) {
+				error++;
+				log.error("Exception caught: "+e.getMessage());
+				log.error(Arrays.toString(e.getStackTrace()));
+			}
+		}
+
+		synQuery.closeCursor();
+		close();
+		log.info("Registros insertados: "+cont);
+		log.info("Errores: "+error);
 	}
 }
