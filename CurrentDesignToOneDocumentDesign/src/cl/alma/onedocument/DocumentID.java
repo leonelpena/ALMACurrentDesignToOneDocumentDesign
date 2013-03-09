@@ -1,8 +1,5 @@
 package cl.alma.onedocument;
 
-import java.util.Calendar;
-import java.util.GregorianCalendar;
-
 /**
  * DocumentID class represent a MongoDB Object ID for the schema "One document
  * per component per day".
@@ -29,9 +26,9 @@ public class DocumentID {
 	 * Instantiate a new DocumentID object
 	 * @param date Date of the data.
 	 * @param antenna Antenna name, i.e., 'DV10', 'CM12'
-	 * @param component Component/subcomponent name, i.e., 'POL_MON4'
+	 * @param component Component/subcomponent name, i.e., 'LLC'
+	 * @param monitorPoint Monitor point name, i.e., 'POL_MON4'
 	 */
-	//public DocumentID(Calendar date, String antenna, String component, 
 	public DocumentID(int year, int month, int day, String antenna, String component,
 			String monitorPoint) {
 
@@ -42,20 +39,12 @@ public class DocumentID {
 		this._component = component;
 		this._monitorPoint = monitorPoint;
 
-		//_stringDate = Integer.toString(date.get(Calendar.YEAR)) + 
-			//	Integer.toString(date.get(Calendar.MONTH)) + 
-				//Integer.toString(date.get(Calendar.DAY_OF_MONTH));
-		//_date = new GregorianCalendar(year, month-1, day);
 		_stringDate = Integer.toString(year) + "-" +
 				Integer.toString(month) + "-" +
 				Integer.toString(day);
 		_id =  _stringDate.replace("-", "") + SEPARATOR + antenna + SEPARATOR + component +
 				SEPARATOR + monitorPoint;
 	}
-
-	//public Calendar getDate() {
-		//return _date;
-	//}
 
 	public String getStringDate() {
 		return _stringDate;
@@ -88,11 +77,5 @@ public class DocumentID {
 	@Override
 	public String toString() {
 		return _id;
-	}
-
-	public static void main(String[] argv) {
-		//Calendar date = new GregorianCalendar(2012, 7, 23, 13, 34, 59);
-		DocumentID doc = new DocumentID(2012, 7, 23, "CM01", "LLC", "POL_MON1");
-		System.out.println("DocumetID: "+doc+"\n Date: "+doc.getStringDate());
 	}
 }
