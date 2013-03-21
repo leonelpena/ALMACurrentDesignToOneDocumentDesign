@@ -27,6 +27,7 @@ public class MongoManager implements Runnable {
 	
 	public static final int N_MONITOR_POINTS = 100000;
 	public static final String NOT_ASSIGNED = "na";
+	public static final int DEFAULT_PREALLOCATE_TIME = 1;
 	
 	private static final Logger log = Logger.getLogger(MongoManager.class);
 	private Mongo mongo;
@@ -195,13 +196,19 @@ public class MongoManager implements Runnable {
 		mongo.close();
 	}
 
-	public DBObject preAllocate(Metadata metadata) {
+	/**
+	 * Creates a document with the necessary structure for a post-update of 
+	 * its attributes. Use it before upsert a document.
+	 * @param metadata Document metadatas
+	 * @param tStart The time to start the preallocation
+	 * @return The preallocated document
+	 */
+	public DBObject preAllocate(Metadata metadata, Date tStart) {
 
-		BasicDBObject document = new BasicDBObject().append("_id",
+		BasicDBObject preAllocatedDocument = new BasicDBObject().append("_id",
 				metadata.getDocumentID().toString());
 
-		document.append("metadata", new BasicDBObject().append(
-				//"date", metadata.getDocumentID().getDate().getTime()).append(
+		preAllocatedDocument.append("metadata", new BasicDBObject().append(
 				"date", metadata.getDocumentID().getStringDate()).append(
 				"antenna", metadata.getDocumentID().getAntenna()).append(
 				"component", metadata.getDocumentID().getComponent()).append(
@@ -213,105 +220,63 @@ public class MongoManager implements Runnable {
 				"sampleTime", metadata.getSampleTime())
 		);
 
-		//List<BasicDBObject> hourly = new ArrayList<BasicDBObject>(24*60*60);
-		/*StringBuilder hourly = new StringBuilder("{ 'hourly' :");
+		DocumentID doc = metadata.getDocumentID();
+		Calendar timeStart = new GregorianCalendar();
+		timeStart.setTime(tStart);
+		
+		int last_hour = timeStart.get(Calendar.HOUR_OF_DAY);
+		int last_minute = timeStart.get(Calendar.MINUTE);
+		int last_second = timeStart.get(Calendar.SECOND);
+		
+		int current_hour = 0;
+		int current_minute = 0;
+		int current_second = 0;
 
-		for (int hour=0; hour<24; hour++) {
+		Calendar time = new GregorianCalendar(doc.getYear(), doc.getMonth(),
+				doc.getDay(), last_hour, last_minute, last_second);
 
-			hourly.append("{'"+hour+"' : ");
+		BasicDBObjectBuilder hours = new BasicDBObjectBuilder();
+		BasicDBObjectBuilder minutes = new BasicDBObjectBuilder();
+		BasicDBObjectBuilder seconds = new BasicDBObjectBuilder();
 
-			for (int minute=0; minute<60; minute++) {
+		// The document is just for one day
+		while (time.get(Calendar.DAY_OF_MONTH)==timeStart.get(Calendar.DAY_OF_MONTH)) {
+
+			current_hour = time.get(Calendar.HOUR_OF_DAY);
+			current_minute = time.get(Calendar.MINUTE);
+			current_second = time.get(Calendar.SECOND);
+
+			// If the "hour" change creates a new instance of minute and second,
+			// but if only changed the minute creates a new instance of seconds
+			if (last_hour!=current_hour) {
+
+				minutes.add(Integer.toString(last_minute),seconds.get());
+				hours.add(Integer.toString(last_hour),minutes.get());
 				
-				hourly.append("{'"+minute+"' : ");
-				
-				for (int second=0; second<60; second++) {
-
-					hourly.append("{'"+second+"' : {");
-
-					// Monitor data value to preallocate
-					String attribute = "hourly." + Integer.toString(hour) + "." + 
-								Integer.toString(minute) + "." + Integer.toString(second);
-
-					BasicDBObject updateDocument = new BasicDBObject().append("$set",
-							new BasicDBObject().append(attribute, value));
-					
-					JSON.parse(s)
-					
-					hourly.append("}");
-				}
-			}
-			
-			hourly.append("}");
-		}*/
-		/*Map<Integer,Object> hours = new HashMap<Integer,Object>(24);
-		Map<Integer,Object> minutes;// = new HashMap<Integer,Object>(60);
-		Map<Integer,String> seconds;// = new HashMap<Integer,Object>(60);
-
-		for (int h=0; h<24; h++) {
-
-			minutes = new HashMap<Integer,Object>(60);
-			hours.put(h, minutes);
-			for (int m=0; m<60; m++) {
-				
-				seconds = new HashMap<Integer,String>(60);
-				minutes.put(m, seconds);
-				for (int s=0; s<60; s++) {
-
-					seconds.put(s, NOT_ASSIGNED);
-					
-					// Monitor data value to preallocate
-					//String attribute = "hourly." + Integer.toString(hour) + "." + 
-						//		Integer.toString(minute) + "." + Integer.toString(second);
-
-					//BasicDBObject updateDocument = new BasicDBObject().append("$set",
-						//	new BasicDBObject().append(attribute, value));
-				}
-			}
-		}
-		JSON.parse;
-			
-		return hours;*/
-
-		BasicDBObjectBuilder hourly = null;
-		BasicDBObjectBuilder hours = null;
-		BasicDBObjectBuilder minutes = null;
-		BasicDBObjectBuilder seconds = null;
-
-		hours = new BasicDBObjectBuilder();
-		for (int h=0; h<24; h++) {
-
-			minutes = new BasicDBObjectBuilder();
-			for (int m=0; m<60; m++) {
-
+				minutes = new BasicDBObjectBuilder();
 				seconds = new BasicDBObjectBuilder();
-				for (int s=0; s<60; s++) {
 
-					seconds.add(Integer.toString(s), NOT_ASSIGNED);
-				}
+			} else if (last_minute!=current_minute) {
 
-				if (seconds!=null && !seconds.isEmpty()) {
-					minutes = new BasicDBObjectBuilder();
-					minutes.add(Integer.toString(m), seconds);
-				}
-				seconds = null;
+				minutes.add(Integer.toString(last_minute),seconds.get());
+				seconds = new BasicDBObjectBuilder();
 			}
 
-			if (minutes!=null && !minutes.isEmpty()) {
-				hours = new BasicDBObjectBuilder();
-				hours.add(Integer.toString(h), minutes);
-			}
-			minutes = null;
+			seconds.add(Integer.toString(current_second), NOT_ASSIGNED);
+
+			last_hour = current_hour;
+			last_minute = current_minute;
+			last_second = current_second;
+			
+			time.add(Calendar.SECOND, metadata.getSampleTime());
 		}
 
-		if (hours!=null && !hours.isEmpty()) {
-			hourly = new BasicDBObjectBuilder();
-			hourly.add("hourly", hours);
-		}
+		// Appending the remaining minutes and seconds
+		minutes.add(Integer.toString(last_minute),seconds.get());
+		hours.add(Integer.toString(last_hour),minutes.get());
+		preAllocatedDocument.put("hourly", hours.get());
 
-		if (hourly!=null && !hourly.isEmpty())
-			return hourly.get();
-
-		return null;
+		return preAllocatedDocument;
 	}
 
 	public boolean isDocumentCreated(DocumentID id) {

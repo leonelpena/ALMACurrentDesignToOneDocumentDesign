@@ -12,18 +12,35 @@ public class Metadata {
 	private String _property;
 	private String _location;
 	private String _serialNumber;
-	private int _sampleTime;
 	private int _index;
+	private int _sampleTime;
 
+	/**
+	 * Instantiate a new Metadata object
+	 * @param documentID
+	 * @param property
+	 * @param location
+	 * @param serialNumber
+	 * @param index
+	 * @param sampleTime
+	 */
 	public Metadata(DocumentID documentID, String property, String location,
-			String serialNumber, int sampleTime, int index) {
+			String serialNumber, int index, int sampleTime) {
+
+		if (documentID==null) {
+			throw new IllegalArgumentException("DocumentID cannot be null");
+		}
+
+		if (sampleTime<=0) {
+			throw new IllegalArgumentException("Sample time cannot be less or equal than zero");
+		}
 
 		this._documentID = documentID;
 		this._property = property;
 		this._location = location;
 		this._serialNumber = serialNumber;
-		this._sampleTime = sampleTime;
 		this._index = index;
+		this._sampleTime = sampleTime;
 	}
 
 	public DocumentID getDocumentID() {

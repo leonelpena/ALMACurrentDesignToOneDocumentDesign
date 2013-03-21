@@ -5,6 +5,8 @@ import static org.junit.Assert.*;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
+import java.util.GregorianCalendar;
 
 import org.junit.After;
 import org.junit.AfterClass;
@@ -72,7 +74,20 @@ public class MongoManagerTest {
 
 	@Test
 	public void testPreAllocate() {
-		fail("Not yet implemented");		
+		//fail("Not yet finished");
+		
+		// Sample time: 5 sec.
+		DocumentID documentID = new DocumentID(2012, 9, 30, "DV04", "LLC", "POL_MON4");
+		Metadata metadata = new Metadata(documentID, "ASDF Property", "TFING",
+				"as76d6fh", 2, MongoManager.DEFAULT_PREALLOCATE_TIME);
+		
+		Calendar date = new GregorianCalendar(2012, 9, 30, 23, 2, 27);
+
+		DBObject dbObject = mongo.preAllocate(metadata, date.getTime());
+		DBCollection coll = mongo.getCollection(documentID);
+		coll.insert(dbObject);
+		//System.out.println(com.mongodb.util.JSON.serialize(dbObject));
+		fail("Not yet finished");
 	}
 
 	@Test
