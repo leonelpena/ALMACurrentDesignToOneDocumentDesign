@@ -41,8 +41,8 @@ public class Query {
 		/*	*/
 		BasicDBObject query = new BasicDBObject("date", new BasicDBObject(
 				"$gte", startDate.getTime()).append("$lte", endDate.getTime()));
-		//query.append("componentName", "CONTROL/DV10/FrontEnd/Cryostat");
-		//query.append("monitorPointName", "GATE_VALVE_STATE");
+		query.append("componentName", "CONTROL/DV10/FrontEnd/Cryostat");
+		query.append("monitorPointName", "GATE_VALVE_STATE");
 		//query.append("componentName", "CONTROL/DV16/LLC");
 		//query.append("monitorPointName", "POL_MON4");
 
@@ -64,18 +64,15 @@ public class Query {
 		try {
 			int cont=0;
 			while(cursor.hasNext()) {
-				//System.out.println(cursor.next());
+
 				try {
 					queue.put(cursor.next());
 					cont++;
-					//Thread.sleep(5000);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
-				//System.exit(0);
 			}
 			System.out.println("Total: "+cont);
-			//System.out.println("Query: "+query);
 		} finally {
 			cursor.close();
 		}

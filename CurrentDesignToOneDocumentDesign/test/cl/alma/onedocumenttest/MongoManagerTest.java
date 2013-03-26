@@ -20,6 +20,7 @@ import com.mongodb.DBObject;
 import cl.alma.onedocument.DocumentID;
 import cl.alma.onedocument.Metadata;
 import cl.alma.onedocument.MongoManager;
+import cl.alma.onedocument.Sample;
 
 public class MongoManagerTest {
 
@@ -68,11 +69,6 @@ public class MongoManagerTest {
 	}
 
 	@Test
-	public void testUpsertSample() {
-		fail("Not yet implemented");
-	}
-
-	@Test
 	public void testPreAllocate() {
 		//fail("Not yet finished");
 		
@@ -87,6 +83,7 @@ public class MongoManagerTest {
 		DBCollection coll = mongo.getCollection(documentID);
 		coll.insert(dbObject);
 		//System.out.println(com.mongodb.util.JSON.serialize(dbObject));
+
 		fail("Not yet finished");
 	}
 
@@ -98,14 +95,14 @@ public class MongoManagerTest {
 		DocumentID doc4 = new DocumentID(2012, 10, 2, "CM02", "LLC", "POL_MON1");
 		DocumentID doc5 = new DocumentID(2012, 10, 1, "DV10", "LLC", "POL_MON2");
 		
-		boolean[] expected = new boolean[5];
-		expected[0] = mongo.isDocumentCreated(doc1);
-		expected[1] = mongo.isDocumentCreated(doc2);
-		expected[2] = mongo.isDocumentCreated(doc3);
-		expected[3] = mongo.isDocumentCreated(doc4);
-		expected[4] = mongo.isDocumentCreated(doc5);
-
 		boolean[] actual = new boolean[5];
+		actual[0] = mongo.isDocumentCreated(doc1);
+		actual[1] = mongo.isDocumentCreated(doc2);
+		actual[2] = mongo.isDocumentCreated(doc3);
+		actual[3] = mongo.isDocumentCreated(doc4);
+		actual[4] = mongo.isDocumentCreated(doc5);
+
+		boolean[] expected = new boolean[5];
 		expected[0] = false;
 		expected[1] = false;
 		expected[2] = false;
@@ -114,5 +111,53 @@ public class MongoManagerTest {
 
 		assertTrue(Arrays.equals(expected, actual));
 	}
+	
+	@Test
+	public void testRegisterDocumentToBuffer() {
+		DocumentID doc1 = new DocumentID(2011, 4, 1, "CM02", "LLC", "POL_MON1");
+		DocumentID doc2 = new DocumentID(2010, 2, 1, "DV10", "LLC", "POL_MON3");
 
+		boolean[] expected = new boolean[3];
+		boolean[] actual = new boolean[3];
+
+		expected[0] = false;
+		actual[0] = mongo.isDocumentCreated(doc1);
+
+		mongo.registerDocumentToBuffer(doc1);
+		expected[1] = true;
+		actual[1] = mongo.isDocumentCreated(doc1);
+
+		mongo.registerDocumentToBuffer(doc2);
+		expected[2] = true;
+		actual[2] = mongo.isDocumentCreated(doc2);;
+
+		assertTrue(Arrays.equals(expected, actual));
+	}
+
+	@Test
+	public void testUpsertSample() {
+		DocumentID documentID_1 = new DocumentID(2012, 3, 20, "DA41", "LLC", 
+				"POL_MON3");
+		Metadata metadata_1 = new Metadata(documentID_1, "ASDF Property", "TFING",
+				"as76d6fh", 2, MongoManager.DEFAULT_PREALLOCATE_TIME);
+
+		for (int i=0; i<6; i++)
+			mongo.upsert(new Sample(metadata_1, 22, 31, 43+i, "6,896"), true);
+
+		DocumentID documentID_2 = new DocumentID(2012, 2, 20, "DA41", "LLC", 
+				"POL_MON3");
+		Metadata metadata_2 = new Metadata(documentID_2, "ASDF Property", "TFING",
+				"as76d6fh", 2, MongoManager.DEFAULT_PREALLOCATE_TIME);
+
+		for (int i=0; i<6; i++)
+			mongo.upsert(new Sample(metadata_2, 22, 31, 43+i, "6,896"), true);
+
+		DocumentID documentID_3 = new DocumentID(2012, 2, 20, "DA41", "LLC", 
+				"POL_MON3");
+		Metadata metadata_3 = new Metadata(documentID_3, "ASDF Property", "TFING",
+				"as76d6fh", 2, MongoManager.DEFAULT_PREALLOCATE_TIME);
+
+		for (int i=0; i<6; i++)
+			mongo.upsert(new Sample(metadata_3, 0, 0, i, "5"), true);
+	}
 }

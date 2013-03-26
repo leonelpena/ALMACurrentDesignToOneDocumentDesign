@@ -12,30 +12,30 @@ public class Main {
 	 */
 	public static void main(String[] args) {
 
-		LinkedBlockingQueue<DBObject> queue = new LinkedBlockingQueue<DBObject>();
+		LinkedBlockingQueue<DBObject> queue = 
+				new LinkedBlockingQueue<DBObject>(500000);
 		
 		MongoManager mongoManager = null;
 		try {
 			//mongoManager = new MongoManager("localhost",
 			mongoManager = new MongoManager("mongo-r1.osf.alma.cl",
-					//"OneDocumentPerComponentPerDay", "monitorData");
 					"OneMonitorPointPerDayPerDocument", "monitorData");
 			mongoManager.setQueue(queue);
 		} catch (UnknownHostException e1) {
 			e1.printStackTrace();
 		}
-		
+
 		Thread hiloMongo = new Thread(mongoManager);
 		hiloMongo.start();
 
-		/*try {
+		try {
 			Query query = new Query("mongo-r1.osf.alma.cl", "MONDB",
 					"monitorPoints");
 			query.setQueue(queue);
 			query.exportData();
 			
-			// Once exportData() has been executed and the queue is empty 
-			// we interrupt the MongoManager thread
+			// Interrupting the MongoManager thread once have been consumed
+			// all samples in the queue
 			while (!queue.isEmpty()) {
 				try {
 					Thread.sleep(3000);
@@ -48,7 +48,7 @@ public class Main {
 		} catch (UnknownHostException e) {
 			e.printStackTrace();
 			System.exit(-1);
-		}*/
+		}
 	}
 
 }
