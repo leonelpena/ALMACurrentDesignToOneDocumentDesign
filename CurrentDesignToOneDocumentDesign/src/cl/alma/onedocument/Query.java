@@ -35,14 +35,15 @@ public class Query {
 
 	public void exportData() {
 		// The months in Gregorian Calendar start with 0
-		Calendar startDate = new GregorianCalendar(2012, 9-1, 01, 0, 0, 0);
+		Calendar startDate = new GregorianCalendar(2012, 9-1, 1, 0, 0, 0);
 		Calendar endDate = new GregorianCalendar(2012, 9-1, 30, 23, 59, 59);
 
 		/*	*/
 		BasicDBObject query = new BasicDBObject("date", new BasicDBObject(
 				"$gte", startDate.getTime()).append("$lte", endDate.getTime()));
-		query.append("componentName", "CONTROL/DV10/FrontEnd/Cryostat");
-		query.append("monitorPointName", "GATE_VALVE_STATE");
+		//query.append("componentName", "CONTROL/DV10/FrontEnd/Cryostat");
+		//query.append("monitorPointName", "GATE_VALVE_STATE");
+		//query.append("propertyName", "GATE_VALVE_STATE");
 		//query.append("componentName", "CONTROL/DV16/LLC");
 		//query.append("monitorPointName", "POL_MON4");
 

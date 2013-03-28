@@ -34,8 +34,9 @@ import com.mongodb.util.JSON;
  */
 public class MongoManager implements Runnable {
 	
-	public static final int N_MONITOR_POINTS = 100000;
+	public static final int N_MONITOR_POINTS = 250000;
 	public static final String NOT_ASSIGNED = "na";
+	public static final String DEFAULT_CHARACTER = "a";
 	public static final int DEFAULT_PREALLOCATE_TIME = 1;
 	
 	private static final Logger log = Logger.getLogger(MongoManager.class);
@@ -49,9 +50,11 @@ public class MongoManager implements Runnable {
 	private DBCollection collection;
 	private LinkedBlockingQueue<DBObject> queue;
 	
-	private HashMap<String, Boolean> createdDocuments;
+	//private HashMap<String, Boolean> createdDocuments;
 	
 	private int preallocate_cont;
+	
+	private DocumentBuffer<String> documentBuffer;
 
 	public MongoManager(String host, String dbname, String coll) 
 					throws UnknownHostException {
@@ -62,9 +65,10 @@ public class MongoManager implements Runnable {
 		//mongoCollections = new HashMap<Integer, DBCollection>(70);
 		//collection = database.getCollection("monitorData");
 		collection = database.getCollection(coll);
-		createdDocuments = new HashMap<String, Boolean>(N_MONITOR_POINTS);
+		//createdDocuments = new HashMap<String, Boolean>(N_MONITOR_POINTS);
 		
 		preallocate_cont = 0;
+		this.documentBuffer = new DocumentBuffer<String>(N_MONITOR_POINTS);
 	}
 	
 	public void setQueue(LinkedBlockingQueue<DBObject> queue) {
@@ -133,6 +137,7 @@ public class MongoManager implements Runnable {
 		return c;
 	}
 
+	/*
 	public void upsert(Metadata metadata, int hour, int minute,
 			int second, String value) {
 
@@ -169,7 +174,7 @@ public class MongoManager implements Runnable {
 		// Codigo para usar colecciones mensuales.
 		multipleCollection = getCollection(metadata.getDocumentID());
 		multipleCollection.update(document, updateDocument, true, false);
-	}
+	}*/
 
 	/**
 	 * Update or insert a sample. It is highly recommended preallocate a 
@@ -192,9 +197,9 @@ public class MongoManager implements Runnable {
 		String attribute = "hourly." + Integer.toString(sample.getHour()) + 
 				"." + Integer.toString(sample.getMinute()) + 
 				"." + Integer.toString(sample.getSecond());
-		
-		if (docID.getDay()==29)
-			log.info("Doc: "+docID.toString()+", "+attribute);
+
+		//if (docID.getDay()==29)
+			//log.info("Doc: "+docID.toString()+", "+attribute);
 
 		Metadata metadata = sample.getMetadata();
 		BasicDBObject document = new BasicDBObject().append("_id",
@@ -236,7 +241,9 @@ public class MongoManager implements Runnable {
 			// By default the document begins in 00:00:00.
 			Calendar tStart = new GregorianCalendar(docID.getYear(),
 					docID.getMonth(), docID.getDay(), 0, 0, 0);
-			collection.insert(preAllocate(meta, tStart.getTime()));
+			collection.insert(preAllocate(meta, tStart.getTime(), 
+					sample.getValue().length())
+			);
 			
 			// Registering the document to the buffer
 			//createdDocuments.put(docID.toString(), true);
@@ -342,7 +349,19 @@ public class MongoManager implements Runnable {
 	 * @param tStart The time to start the preallocation
 	 * @return The preallocated document
 	 */
-	public DBObject preAllocate(Metadata metadata, Date tStart) {
+	public DBObject preAllocate(Metadata metadata, Date tStart, int valueSize) {
+
+		// If the value size is equal or less than two, it use the 
+		// NOT_ASSIGNED string to represent a not assigned value and
+		// for the values size greater or equal than three use the NOT_ASSIGNED 
+		// constant plus DEFAULT_CHARACTER for each character greater or 
+		// equal than three. In the second case, the size of the 
+		// value preallocated is equal to the size that will be assigned into 
+		// the upsert method
+		String valueToPreallocate = NOT_ASSIGNED;
+		for (int i=3; i<=valueSize; i++) {
+			valueToPreallocate += DEFAULT_CHARACTER;
+		}
 
 		BasicDBObject preAllocatedDocument = new BasicDBObject().append("_id",
 				metadata.getDocumentID().toString());
@@ -400,8 +419,9 @@ public class MongoManager implements Runnable {
 				minutes.add(Integer.toString(last_minute),seconds.get());
 				seconds = new BasicDBObjectBuilder();
 			}
-
-			seconds.add(Integer.toString(current_second), NOT_ASSIGNED);
+			
+			//seconds.add(Integer.toString(current_second), NOT_ASSIGNED);
+			seconds.add(Integer.toString(current_second), valueToPreallocate);
 
 			last_hour = current_hour;
 			last_minute = current_minute;
@@ -431,14 +451,16 @@ public class MongoManager implements Runnable {
 	public boolean isDocumentCreated(DocumentID id) {
 		
 		// First, check the buffer
-		if (createdDocuments.containsKey(id.toString()))
+		//if (createdDocuments.containsKey(id.toString()))
+		if (documentBuffer.contains(id.toString()))
 			return true;
 
 		// Otherwise consult to the database
 		DBCollection coll = getCollection(id);
 		DBObject doc = coll.findOne(new BasicDBObject("_id",id.toString()));
 		if (doc!=null) {
-			createdDocuments.put(id.toString(), true);
+			//createdDocuments.put(id.toString(), true);
+			documentBuffer.set(id.toString());
 			return true;
 		}
 
@@ -460,7 +482,8 @@ public class MongoManager implements Runnable {
 		// siendo registrados, es decir, los dias anteriores
 
 		// Registering the document to the buffer
-		createdDocuments.put(documentID.toString(), true);
+		//createdDocuments.put(documentID.toString(), true);
+		documentBuffer.set(documentID.toString());
 		
 		preallocate_cont++;
 	}
@@ -473,9 +496,7 @@ public class MongoManager implements Runnable {
 			try {
 				DBObject object = queue.take();
 
-				//Set<String> mySet = object.keySet();
-				Map<String, Object> myMap = object.toMap();
-				//System.out.println("Set: "+mySet);
+				Map<String,Object> myMap = object.toMap();
 				
 				//if (myMap.get("date") instanceof Date) {
 					//System.out.println("Es instacia de DATE!!");
@@ -491,10 +512,10 @@ public class MongoManager implements Runnable {
 				}
 
 			    // ************************************************ //
-			    // Se añaden las tres horas de diferencia 			//
+			    // Se añaden las tres horas de diferencia			//
 			    // con el servidor de mongo.						//
 			    // ************************************************	//
-			    //calendar.add(Calendar.HOUR, 3);
+			    calendar.add(Calendar.HOUR, 3);
 
 			    int year = calendar.get(Calendar.YEAR);
 			    int month = calendar.get(Calendar.MONTH)+1;
@@ -507,6 +528,12 @@ public class MongoManager implements Runnable {
 			    //System.out.println("Map: "+myMap+",\n year: "+year+", month: "+
 			    	//	month+", day: "+day+", hour: "+hour+", minute: "+minute+
 			    		//", second: "+second);
+			    
+			    //if (day==29) {
+				  //  log.info("year: "+year+", month: "+
+				    //		month+", day: "+day+", hour: "+hour+", minute: "+
+				    	//	minute+", second: "+second);
+			    //}
 			    
 			    // We need to split the componentName that comes from the old schema.
 			    // The format is "CONTROL/DV10/FrontEnd/Cryostat".

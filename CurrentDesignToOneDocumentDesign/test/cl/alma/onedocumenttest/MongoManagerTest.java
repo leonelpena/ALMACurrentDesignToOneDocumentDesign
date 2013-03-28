@@ -79,7 +79,7 @@ public class MongoManagerTest {
 		
 		Calendar date = new GregorianCalendar(2012, 9, 30, 23, 2, 27);
 
-		DBObject dbObject = mongo.preAllocate(metadata, date.getTime());
+		DBObject dbObject = mongo.preAllocate(metadata, date.getTime(), 1);
 		DBCollection coll = mongo.getCollection(documentID);
 		coll.insert(dbObject);
 		//System.out.println(com.mongodb.util.JSON.serialize(dbObject));
