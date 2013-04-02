@@ -5,12 +5,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.log4j.Logger;
 
@@ -41,22 +43,60 @@ public class MongoManager implements Runnable {
 	
 	private static final Logger log = Logger.getLogger(MongoManager.class);
 	private static final Logger infoLog = Logger.getLogger("info_log");
-	private Mongo mongo;
-	private DB database;
-	private HashMap<String, DBCollection> mongoCollections;
-	//private HashMap<Integer, DBCollection> mongoCollections;
-	private DBCollection multipleCollection;
 	
-	private DBCollection collection;
+	private static Mongo mongo;
+	private static DB database;
+	private static Map<String, DBCollection> mongoCollections;
+	
+	private static int numThreads;
+	private static DocumentBuffer<String> documentBuffer;
+	private static AtomicInteger preallocate_cont;
+	private static AtomicInteger updates;
+	private static AtomicInteger errors;
+
+	private String threadName;
 	private LinkedBlockingQueue<DBObject> queue;
 	
-	//private HashMap<String, Boolean> createdDocuments;
-	
-	private int preallocate_cont;
-	
-	private DocumentBuffer<String> documentBuffer;
+	static {
+		numThreads = 0;
+		preallocate_cont = new AtomicInteger();
+		updates = new AtomicInteger();
+		errors = new AtomicInteger();
+		mongoCollections = Collections.synchronizedMap(
+				new HashMap<String, DBCollection>(3)
+		);
+		documentBuffer = new DocumentBuffer<String>(N_MONITOR_POINTS);
+	}
 
-	public MongoManager(String host, String dbname, String coll) 
+	/**
+	 * Returns a MongoManager instance. Use this method to get the
+	 * MongoManager objects to use in a multiple-thread consumer environment.
+	 * @param queue
+	 * @return 
+	 */
+	public static MongoManager mongoManagerFactory(LinkedBlockingQueue<DBObject> queue) {
+		numThreads++;
+
+		return new MongoManager("MongoManager_"+numThreads, queue);
+	}
+
+	/**
+	 * 
+	 * @param _mongo
+	 * @param _database
+	 */
+	public static void setConnection(Mongo _mongo, DB _database) {
+		mongo = _mongo;
+		database = _database;
+	}
+	
+	private MongoManager(String threadName, LinkedBlockingQueue<DBObject> queue) {
+		this.threadName = threadName;
+		this.queue = queue;
+	}
+
+	@Deprecated
+	public MongoManager(String host, String dbname) 
 					throws UnknownHostException {
 
 		mongo = new Mongo(host);
@@ -64,11 +104,12 @@ public class MongoManager implements Runnable {
 		mongoCollections = new HashMap<String, DBCollection>(3);
 		//mongoCollections = new HashMap<Integer, DBCollection>(70);
 		//collection = database.getCollection("monitorData");
-		collection = database.getCollection(coll);
+		//collection = database.getCollection(coll);
 		//createdDocuments = new HashMap<String, Boolean>(N_MONITOR_POINTS);
 		
-		preallocate_cont = 0;
-		this.documentBuffer = new DocumentBuffer<String>(N_MONITOR_POINTS);
+		// Error with atomiccounter
+		//preallocate_cont = 0;
+		//this.documentBuffer = new DocumentBuffer<String>(N_MONITOR_POINTS);
 	}
 	
 	public void setQueue(LinkedBlockingQueue<DBObject> queue) {
@@ -137,45 +178,6 @@ public class MongoManager implements Runnable {
 		return c;
 	}
 
-	/*
-	public void upsert(Metadata metadata, int hour, int minute,
-			int second, String value) {
-
-		//collection = getCollection(metadata.getDocumentID());
-
-		BasicDBObject document = new BasicDBObject().append("_id",
-				metadata.getDocumentID().toString());
-
-		document.append("metadata", new BasicDBObject().append(
-				//"date", metadata.getDocumentID().getDate().getTime()).append(
-				"date", metadata.getDocumentID().getStringDate()).append(
-				"antenna", metadata.getDocumentID().getAntenna()).append(
-				"component", metadata.getDocumentID().getComponent()).append(
-				"property", metadata.getProperty()).append(
-				"monitorPoint", metadata.getDocumentID().getMonitorPoint()).append(
-				"location", metadata.getLocation()).append(
-				"serialNumber", metadata.getSerialNumber()).append(
-				"index", metadata.getIndex()).append(
-				"sampleTime", metadata.getSampleTime())
-		);
-
-		// Monitor data value to update
-		String attribute = "hourly." + Integer.toString(hour) + "." + 
-					Integer.toString(minute) + "." + Integer.toString(second);
-
-		BasicDBObject updateDocument = new BasicDBObject().append("$set",
-				new BasicDBObject().append(attribute, value));
-
-		//System.out.println("Document: "+document);
-		//System.out.println("Update Document: "+updateDocument);
-
-		//collection.update(document, updateDocument, true, false);
-		
-		// Codigo para usar colecciones mensuales.
-		multipleCollection = getCollection(metadata.getDocumentID());
-		multipleCollection.update(document, updateDocument, true, false);
-	}*/
-
 	/**
 	 * Update or insert a sample. It is highly recommended preallocate a 
 	 * document before upsert it. If is upsert a document to which is not
@@ -197,9 +199,6 @@ public class MongoManager implements Runnable {
 		String attribute = "hourly." + Integer.toString(sample.getHour()) + 
 				"." + Integer.toString(sample.getMinute()) + 
 				"." + Integer.toString(sample.getSecond());
-
-		//if (docID.getDay()==29)
-			//log.info("Doc: "+docID.toString()+", "+attribute);
 
 		Metadata metadata = sample.getMetadata();
 		BasicDBObject document = new BasicDBObject().append("_id",
@@ -227,17 +226,8 @@ public class MongoManager implements Runnable {
 		BasicDBObject updateDocument = new BasicDBObject().append("$set",
 				new BasicDBObject().append(attribute, sample.getValue()));
 
-		//System.out.println("Document: "+document);
-		//System.out.println("Update Document: "+updateDocument);
-
-		//collection.update(document, updateDocument, true, false);
-
-		// Codigo para usar colecciones mensuales.
-		//multipleCollection = getCollection(metadata.getDocumentID());
-		//multipleCollection.update(document, updateDocument, true, false);
-
 		// Preallocating the document
-		if (preallocate && !isDocumentCreated(docID)) {
+		if (preallocate && !isDocumentCreated(docID, false)) {
 			// By default the document begins in 00:00:00.
 			Calendar tStart = new GregorianCalendar(docID.getYear(),
 					docID.getMonth(), docID.getDay(), 0, 0, 0);
@@ -246,14 +236,10 @@ public class MongoManager implements Runnable {
 			);
 			
 			// Registering the document to the buffer
-			//createdDocuments.put(docID.toString(), true);
 			registerDocumentToBuffer(docID);
 		}
 
-		WriteResult r = collection.update(document, updateDocument, true, false);
-
-		//if (docID.getDay()==29)
-			//log.info("WriteResult: "+r.getLastError().toString());
+		collection.update(document, updateDocument, true, false);
 	}
 	
 	/**
@@ -266,70 +252,86 @@ public class MongoManager implements Runnable {
 	 * @param samples List of samples to insert or update
 	 * @param preallocate <i>true</i> activate the automatic preallocation 
 	 * control and <i>false</i> for disable the preallocation manage
-	 */ /*
+	 */
 	public void upsert(List<Sample> samples, boolean preallocate) {
+		
+		if (samples==null || samples.isEmpty()) {
+			throw new IllegalArgumentException("List of samples cannot be null or empty");
+		}
 
 		DBCollection collection = null;
-
-		// Monitor data value to update
-		String attribute = null;
 
 		DocumentID docID = null;
 		Metadata metadata = null;
 		BasicDBObject document = null;
-		BasicDBObject updateDocument = null;
+
+		// Monitor data value to update
+		String attribute = null;
+		
+		// Store all monitor data
+		BasicDBObjectBuilder sets = new BasicDBObjectBuilder();
 
 		for (Sample sample : samples) {
 
 			metadata = sample.getMetadata();
 			docID = metadata.getDocumentID();
-			
 			collection = getCollection(docID);
 
 			// Monitor data value to update
 			attribute = "hourly." + sample.getHour() + "." + 
 						sample.getMinute() + "." + sample.getSecond();
 
-			document = new BasicDBObject().append("_id",
-					metadata.getDocumentID().toString());
-
-			// Revisar si es que es necesario enviar todos los metadatos
-			document.append("metadata", new BasicDBObject().append(
-					"date", metadata.getDocumentID().getStringDate()).append(
-					"antenna", metadata.getDocumentID().getAntenna()).append(
-					"component", metadata.getDocumentID().getComponent()).append(
-					"property", metadata.getProperty()).append(
-					"monitorPoint", metadata.getDocumentID().getMonitorPoint()).append(
-					"location", metadata.getLocation()).append(
-					"serialNumber", metadata.getSerialNumber()).append(
-					"index", metadata.getIndex()).append(
-					"sampleTime", metadata.getSampleTime())
-			);
-
-			updateDocument = new BasicDBObject().append("$set",
-					new BasicDBObject().append(attribute, sample.getValue()));
+			sets.add(attribute, sample.getValue());
 		}
 
+		metadata = samples.get(0).getMetadata();
+		document = new BasicDBObject().append("_id",
+				metadata.getDocumentID().toString());
+
+		// Revisar si es que es necesario enviar todos los metadatos
+		document.append("metadata", new BasicDBObject().append(
+				"date", metadata.getDocumentID().getStringDate()).append(
+				"antenna", metadata.getDocumentID().getAntenna()).append(
+				"component", metadata.getDocumentID().getComponent()).append(
+				"property", metadata.getProperty()).append(
+				"monitorPoint", metadata.getDocumentID().getMonitorPoint()).append(
+				"location", metadata.getLocation()).append(
+				"serialNumber", metadata.getSerialNumber()).append(
+				"index", metadata.getIndex()).append(
+				"sampleTime", metadata.getSampleTime())
+		);
+
 		// Preallocating the document
-		if (preallocate && !isDocumentCreated(docID)) {
+		if (preallocate && !isDocumentCreated(docID, false)) {
 			// By default the document begins in 00:00:00.
 			Calendar tStart = new GregorianCalendar(docID.getYear(),
 					docID.getMonth(), docID.getDay(), 0, 0, 0);
-			collection.insert(preAllocate(metadata, tStart.getTime()));
+
+			collection.insert(preAllocate(metadata, tStart.getTime(), 
+					samples.get(0).getValue().length()
+			));
 			
 			// Registering the document to the buffer
-			//createdDocuments.put(docID.toString(), true);
 			registerDocumentToBuffer(docID);
 		}
 
-		collection.update(document, updateDocument, true, false);
-	}*/
+		collection.update(document, new BasicDBObject("$set",sets.get()), 
+				true, false);
+	}
 
 	/**
 	 * Close the connection with MongoDB
 	 */
 	public void close() {
 		mongo.close();
+	}
+
+	/**
+	 * Returns the thread name
+	 * @return
+	 */
+	public String getThreadName() {
+		return this.threadName;
 	}
 
 	/**
@@ -448,19 +450,20 @@ public class MongoManager implements Runnable {
 	 * @param id Document id
 	 * @return <i>true</i> if the document exist and <i>false</i> otherwise
 	 */
-	public boolean isDocumentCreated(DocumentID id) {
+	public boolean isDocumentCreated(DocumentID id, boolean useBuffer) {
 		
 		// First, check the buffer
-		//if (createdDocuments.containsKey(id.toString()))
-		if (documentBuffer.contains(id.toString()))
+		if (useBuffer && documentBuffer.contains(id.toString()))
 			return true;
 
 		// Otherwise consult to the database
 		DBCollection coll = getCollection(id);
 		DBObject doc = coll.findOne(new BasicDBObject("_id",id.toString()));
 		if (doc!=null) {
-			//createdDocuments.put(id.toString(), true);
-			documentBuffer.set(id.toString());
+			if (useBuffer) {
+				documentBuffer.set(id.toString());
+			}
+
 			return true;
 		}
 
@@ -478,31 +481,21 @@ public class MongoManager implements Runnable {
 	 * @param documentID The document to register into the buffer
 	 */
 	public void registerDocumentToBuffer(DocumentID documentID) {
-		// Falta el codigo para eliminar del buffer los dias que ya no están
-		// siendo registrados, es decir, los dias anteriores
 
 		// Registering the document to the buffer
-		//createdDocuments.put(documentID.toString(), true);
-		documentBuffer.set(documentID.toString());
-		
-		preallocate_cont++;
+		//documentBuffer.set(documentID.toString());
+		preallocate_cont.incrementAndGet();
 	}
 
 	@Override
 	public void run() {
-		int cont=0, error=0;
+		//int cont=0, error=0;
 		boolean done = false;
 		while (!done) {
 			try {
 				DBObject object = queue.take();
 
 				Map<String,Object> myMap = object.toMap();
-				
-				//if (myMap.get("date") instanceof Date) {
-					//System.out.println("Es instacia de DATE!!");
-				//} else {
-					//System.out.println("NO lo es!");
-				//}
 				
 				Calendar calendar = Calendar.getInstance();
 				try {
@@ -583,24 +576,22 @@ public class MongoManager implements Runnable {
 				//mongoManager.upsert(metadata, 14, 4, 6, "12345");
 				//upsert(metadata, hour, minute, second, monitorValue);
 				upsert(sample, true);
-
-				cont++;
 				
-				if (cont==100000) {
-					infoLog.info("Registros insertados: "+cont);
-					infoLog.info("Preallocate document: "+preallocate_cont);
+				if (updates.incrementAndGet()==10000) {
+					infoLog.info("Registros insertados: "+updates.get());
+					infoLog.info("Preallocate document: "+preallocate_cont.get());
 				}
 
 			} catch (InterruptedException e) {
-				close();
-				infoLog.info("Preallocated documents: "+preallocate_cont);
-				infoLog.info("Registros insertados: "+cont);
-				log.info("Errores: "+error);
+				//close();
+				infoLog.info("Preallocated documents: "+preallocate_cont.get());
+				infoLog.info("Registros insertados: "+updates.get());
+				log.info("Errores: "+errors.get());
 				
 				done = true;
 
 			} catch (Throwable e) {
-				error++;
+				errors.incrementAndGet();
 				log.error("Exception caught: "+e.getMessage());
 				log.error(Arrays.toString(e.getStackTrace()));
 			}

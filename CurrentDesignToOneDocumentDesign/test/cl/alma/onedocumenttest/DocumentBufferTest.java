@@ -43,5 +43,4 @@ public class DocumentBufferTest {
 
 		assertTrue(Arrays.equals(expecteds, actuals));
 	}
-
 }

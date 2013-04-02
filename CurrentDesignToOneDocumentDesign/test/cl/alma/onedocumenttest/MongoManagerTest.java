@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
+import java.util.List;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import org.junit.After;
 import org.junit.AfterClass;
@@ -14,8 +16,10 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.mongodb.DB;
 import com.mongodb.DBCollection;
 import com.mongodb.DBObject;
+import com.mongodb.Mongo;
 
 import cl.alma.onedocument.DocumentID;
 import cl.alma.onedocument.Metadata;
@@ -25,14 +29,22 @@ import cl.alma.onedocument.Sample;
 public class MongoManagerTest {
 
 	private static MongoManager mongo;
+	private static Mongo _mongo = null;
+	private static DB _database = null;
 
 	@BeforeClass
 	public static void setup() {
+		
 		try {
-			mongo = new MongoManager("localhost", "JUnitTest", "MongoManagerTest");
+			_mongo = new Mongo("localhost");
+			_database = _mongo.getDB("JUnitTest");
 		} catch (UnknownHostException e) {
 			fail("Cannot connect to MongoDB instance");
 		}
+		
+		MongoManager.setConnection(_mongo, _database);
+		
+		mongo = MongoManager.mongoManagerFactory(new LinkedBlockingQueue<DBObject>());
 	}
 	
 	@AfterClass
@@ -42,7 +54,8 @@ public class MongoManagerTest {
 		} catch (UnknownHostException e) {
 			fail("Cannot connect to MongoDB instance");
 		}*/
-		mongo.close();
+		if (mongo!=null)
+			mongo.close();
 	}
 	
 	@Test
@@ -77,7 +90,7 @@ public class MongoManagerTest {
 		Metadata metadata = new Metadata(documentID, "ASDF Property", "TFING",
 				"as76d6fh", 2, MongoManager.DEFAULT_PREALLOCATE_TIME);
 		
-		Calendar date = new GregorianCalendar(2012, 9, 30, 23, 2, 27);
+		Calendar date = new GregorianCalendar(2012, 9, 30, 23, 59, 27);
 
 		DBObject dbObject = mongo.preAllocate(metadata, date.getTime(), 1);
 		DBCollection coll = mongo.getCollection(documentID);
@@ -96,11 +109,11 @@ public class MongoManagerTest {
 		DocumentID doc5 = new DocumentID(2012, 10, 1, "DV10", "LLC", "POL_MON2");
 		
 		boolean[] actual = new boolean[5];
-		actual[0] = mongo.isDocumentCreated(doc1);
-		actual[1] = mongo.isDocumentCreated(doc2);
-		actual[2] = mongo.isDocumentCreated(doc3);
-		actual[3] = mongo.isDocumentCreated(doc4);
-		actual[4] = mongo.isDocumentCreated(doc5);
+		actual[0] = mongo.isDocumentCreated(doc1, true);
+		actual[1] = mongo.isDocumentCreated(doc2, true);
+		actual[2] = mongo.isDocumentCreated(doc3, true);
+		actual[3] = mongo.isDocumentCreated(doc4, true);
+		actual[4] = mongo.isDocumentCreated(doc5, true);
 
 		boolean[] expected = new boolean[5];
 		expected[0] = false;
@@ -121,15 +134,15 @@ public class MongoManagerTest {
 		boolean[] actual = new boolean[3];
 
 		expected[0] = false;
-		actual[0] = mongo.isDocumentCreated(doc1);
+		actual[0] = mongo.isDocumentCreated(doc1, true);
 
 		mongo.registerDocumentToBuffer(doc1);
 		expected[1] = true;
-		actual[1] = mongo.isDocumentCreated(doc1);
+		actual[1] = mongo.isDocumentCreated(doc1, true);
 
 		mongo.registerDocumentToBuffer(doc2);
 		expected[2] = true;
-		actual[2] = mongo.isDocumentCreated(doc2);;
+		actual[2] = mongo.isDocumentCreated(doc2, true);
 
 		assertTrue(Arrays.equals(expected, actual));
 	}
@@ -159,5 +172,20 @@ public class MongoManagerTest {
 
 		for (int i=0; i<6; i++)
 			mongo.upsert(new Sample(metadata_3, 0, 0, i, "5"), true);
+	}
+
+	@Test
+	public void testUpsertList() {
+		DocumentID documentID_1 = new DocumentID(2012, 2, 25, "DA41", "LLC", 
+				"POL_MON3");
+		Metadata metadata_1 = new Metadata(documentID_1, "ASDF Property", "TFING",
+				"as76d6fh", 2, MongoManager.DEFAULT_PREALLOCATE_TIME);
+
+		List<Sample> list = new ArrayList<Sample>(10); 
+		for (int i=0; i<10; i++) {
+			list.add(new Sample(metadata_1, 23, 59, 33+i, "9,9"));
+		}
+		
+		mongo.upsert(list, true);
 	}
 }
