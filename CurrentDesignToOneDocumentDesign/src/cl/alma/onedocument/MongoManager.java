@@ -349,6 +349,7 @@ public class MongoManager implements Runnable {
 	 * 
 	 * @param metadata Document metadatas
 	 * @param tStart The time to start the preallocation
+	 * @param valueSize Size of the value that will be post-update
 	 * @return The preallocated document
 	 */
 	public DBObject preAllocate(Metadata metadata, Date tStart, int valueSize) {
@@ -435,6 +436,74 @@ public class MongoManager implements Runnable {
 		// Appending the remaining minutes and seconds
 		minutes.add(Integer.toString(last_minute),seconds.get());
 		hours.add(Integer.toString(last_hour),minutes.get());
+		preAllocatedDocument.put("hourly", hours.get());
+
+		return preAllocatedDocument;
+	}
+	
+	/**
+	 * Creates a document with the necessary structure for a post-update of 
+	 * its attributes. This method creates a document with all seconds, minutes 
+	 * and hours of a day. Use it before upsert a document. This method does not 
+	 * register the preallocated method in the internal buffer. There are two
+	 * ways to do that:
+	 * <br/>
+	 * 1) The automatic way: Set to <i>true</i> the preallocate argument of
+	 * the method upsert and let to the system the responsibility to manage it.
+	 * <br/>
+	 * 2) The manual way: If you want to manage the preallocate operation you
+	 * need to use these methods: isDocumentCreated(...), registerPreallocation(...)  
+	 * and preAllocate(...)
+	 * 
+	 * @param metadata Document metadatas
+	 * @param valueSize Size of the value that will be post-update
+	 * @return The preallocated document
+	 */
+	public DBObject preAllocate(Metadata metadata, int valueSize) {
+
+		// If the value size is equal or less than two, it use the 
+		// NOT_ASSIGNED string to represent a not assigned value and
+		// for the values size greater or equal than three use the NOT_ASSIGNED 
+		// constant plus DEFAULT_CHARACTER for each character greater or 
+		// equal than three. In the second case, the size of the 
+		// value preallocated is equal to the size that will be assigned into 
+		// the upsert method
+		String valueToPreallocate = NOT_ASSIGNED;
+		for (int i=3; i<=valueSize; i++) {
+			valueToPreallocate += DEFAULT_CHARACTER;
+		}
+		
+		DocumentID doc = metadata.getDocumentID();
+
+		BasicDBObject preAllocatedDocument = new BasicDBObject().append("_id",
+				metadata.getDocumentID().toString());
+
+		preAllocatedDocument.append("metadata", new BasicDBObject().append(
+				"date", doc.getStringDate()).append(
+				"antenna", doc.getAntenna()).append(
+				"component", doc.getComponent()).append(
+				"property", metadata.getProperty()).append(
+				"monitorPoint", doc.getMonitorPoint()).append(
+				"location", metadata.getLocation()).append(
+				"serialNumber", metadata.getSerialNumber()).append(
+				"index", metadata.getIndex()).append(
+				"sampleTime", metadata.getSampleTime())
+		);
+		
+		BasicDBObjectBuilder hours = new BasicDBObjectBuilder();
+		BasicDBObjectBuilder minutes = new BasicDBObjectBuilder();
+		BasicDBObjectBuilder seconds = new BasicDBObjectBuilder();
+		
+		for (int hour=0; hour<24; hour++) {
+			for (int minute=0; minute<60; minute++) {
+				for (int second=0; second<60; second++) {
+					seconds.add(Integer.toString(second), valueToPreallocate);
+				}
+				minutes.add(Integer.toString(minute), seconds.get());
+			}
+			hours.add(Integer.toString(hour), minutes.get());
+		}
+
 		preAllocatedDocument.put("hourly", hours.get());
 
 		return preAllocatedDocument;

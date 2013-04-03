@@ -83,7 +83,6 @@ public class MongoManagerTest {
 
 	@Test
 	public void testPreAllocate() {
-		//fail("Not yet finished");
 		
 		// Sample time: 5 sec.
 		DocumentID documentID = new DocumentID(2012, 9, 30, "DV04", "LLC", "POL_MON4");
@@ -91,13 +90,26 @@ public class MongoManagerTest {
 				"as76d6fh", 2, MongoManager.DEFAULT_PREALLOCATE_TIME);
 		
 		Calendar date = new GregorianCalendar(2012, 9, 30, 23, 59, 27);
-
+		
 		DBObject dbObject = mongo.preAllocate(metadata, date.getTime(), 1);
 		DBCollection coll = mongo.getCollection(documentID);
 		coll.insert(dbObject);
-		//System.out.println(com.mongodb.util.JSON.serialize(dbObject));
-
-		fail("Not yet finished");
+		
+		fail("This test case needs a manual validation");
+	}
+	
+	@Test
+	public void testPreAllocate2() {
+		
+		DocumentID documentID = new DocumentID(2012, 12, 16, "CM04", "LLC", "POL_MON1");
+		Metadata metadata = new Metadata(documentID, "ASDF Property", "TFING",
+				"as76d6fh", 2, MongoManager.DEFAULT_PREALLOCATE_TIME);
+		
+		DBObject dbObject = mongo.preAllocate(metadata, 2);
+		DBCollection coll = mongo.getCollection(documentID);
+		coll.insert(dbObject);
+		
+		fail("This test case needs a manual validation");
 	}
 
 	@Test
