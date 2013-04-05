@@ -40,6 +40,7 @@ public class MongoManager implements Runnable {
 	public static final String NOT_ASSIGNED = "na";
 	public static final String DEFAULT_CHARACTER = "a";
 	public static final int DEFAULT_PREALLOCATE_TIME = 1;
+	public static final int MAX_VALUE_SIZE = 7;
 	
 	private static final Logger log = Logger.getLogger(MongoManager.class);
 	private static final Logger infoLog = Logger.getLogger("info_log");
@@ -57,6 +58,8 @@ public class MongoManager implements Runnable {
 	private String threadName;
 	private LinkedBlockingQueue<DBObject> queue;
 	
+	private static BasicDBObject[] preallocatedDocuments;
+	
 	static {
 		numThreads = 0;
 		preallocate_cont = new AtomicInteger();
@@ -66,6 +69,12 @@ public class MongoManager implements Runnable {
 				new HashMap<String, DBCollection>(3)
 		);
 		documentBuffer = new DocumentBuffer<String>(N_MONITOR_POINTS);
+		
+		// Creates several documents with different size of the value
+		preallocatedDocuments = new BasicDBObject[MAX_VALUE_SIZE]; 
+		for (int i=0; i<MAX_VALUE_SIZE; i++) {
+			preallocatedDocuments[i] = preAllocate(i+1);
+		}
 	}
 
 	/**
@@ -79,7 +88,42 @@ public class MongoManager implements Runnable {
 
 		return new MongoManager("MongoManager_"+numThreads, queue);
 	}
+	
+	/**
+	 * Returns the preallocate document with predefine value size.
+	 * @param valueSize Value size of the fields
+	 * @return
+	 */
+	public static BasicDBObject getPreallocatedDocument(int valueSize) {
+		if (valueSize<0 || valueSize>=MAX_VALUE_SIZE)
+			throw new IllegalArgumentException("Value size out of range.");
+		
+		return preallocatedDocuments[valueSize];
+	}
+	
+	public static BasicDBObject getPreallocatedDocument(Metadata metadata, int valueSize) {
+		if (valueSize<0 || valueSize>=MAX_VALUE_SIZE)
+			throw new IllegalArgumentException("Value size out of range.");
+		
+		BasicDBObject newDocument = (BasicDBObject) preallocatedDocuments[valueSize].clone();
+		
+		newDocument.append("_id",metadata.getDocumentID().toString());
 
+		newDocument.append("metadata", new BasicDBObject().append(
+				"date", metadata.getDocumentID().getStringDate()).append(
+				"antenna", metadata.getDocumentID().getAntenna()).append(
+				"component", metadata.getDocumentID().getComponent()).append(
+				"property", metadata.getProperty()).append(
+				"monitorPoint", metadata.getDocumentID().getMonitorPoint()).append(
+				"location", metadata.getLocation()).append(
+				"serialNumber", metadata.getSerialNumber()).append(
+				"index", metadata.getIndex()).append(
+				"sampleTime", metadata.getSampleTime())
+		);
+		
+		return newDocument;
+	}
+	
 	/**
 	 * 
 	 * @param _mongo
@@ -490,6 +534,58 @@ public class MongoManager implements Runnable {
 				"sampleTime", metadata.getSampleTime())
 		);
 		
+		BasicDBObjectBuilder hours = new BasicDBObjectBuilder();
+		BasicDBObjectBuilder minutes = new BasicDBObjectBuilder();
+		BasicDBObjectBuilder seconds = new BasicDBObjectBuilder();
+		
+		for (int hour=0; hour<24; hour++) {
+			for (int minute=0; minute<60; minute++) {
+				for (int second=0; second<60; second++) {
+					seconds.add(Integer.toString(second), valueToPreallocate);
+				}
+				minutes.add(Integer.toString(minute), seconds.get());
+			}
+			hours.add(Integer.toString(hour), minutes.get());
+		}
+
+		preAllocatedDocument.put("hourly", hours.get());
+
+		return preAllocatedDocument;
+	}
+	
+	/**
+	 * Creates a document with the necessary structure for a post-update of 
+	 * its attributes. This method creates a document with all seconds, minutes 
+	 * and hours of a day. Use it before upsert a document. This method does not 
+	 * register the preallocated method in the internal buffer. There are two
+	 * ways to do that:
+	 * <br/>
+	 * 1) The automatic way: Set to <i>true</i> the preallocate argument of
+	 * the method upsert and let to the system the responsibility to manage it.
+	 * <br/>
+	 * 2) The manual way: If you want to manage the preallocate operation you
+	 * need to use these methods: isDocumentCreated(...), registerPreallocation(...)  
+	 * and preAllocate(...)
+	 * 
+	 * @param metadata Document metadatas
+	 * @param valueSize Size of the value that will be post-update
+	 * @return The preallocated document
+	 */
+	private static BasicDBObject preAllocate(int valueSize) {
+
+		// If the value size is equal or less than two, it use the 
+		// NOT_ASSIGNED string to represent a not assigned value and
+		// for the values size greater or equal than three use the NOT_ASSIGNED 
+		// constant plus DEFAULT_CHARACTER for each character greater or 
+		// equal than three. In the second case, the size of the 
+		// value preallocated is equal to the size that will be assigned into 
+		// the upsert method
+		String valueToPreallocate = NOT_ASSIGNED;
+		for (int i=3; i<=valueSize; i++) {
+			valueToPreallocate += DEFAULT_CHARACTER;
+		}
+		
+		BasicDBObject preAllocatedDocument = new BasicDBObject();
 		BasicDBObjectBuilder hours = new BasicDBObjectBuilder();
 		BasicDBObjectBuilder minutes = new BasicDBObjectBuilder();
 		BasicDBObjectBuilder seconds = new BasicDBObjectBuilder();

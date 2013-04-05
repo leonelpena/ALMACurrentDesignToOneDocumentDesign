@@ -200,4 +200,27 @@ public class MongoManagerTest {
 		
 		mongo.upsert(list, true);
 	}
+	
+	@Test
+	public void testGetPreallocateDocument() {
+		DBCollection coll = _database.getCollection("preallocateDocuments");
+		
+		for (int i=0; i<MongoManager.MAX_VALUE_SIZE; i++) {
+			coll.insert(MongoManager.getPreallocatedDocument(i));
+		}
+	}
+	
+	@Test
+	public void testGetPreallocateDocument2() {
+		DBCollection coll = _database.getCollection("preallocateDocuments2");
+		
+		DocumentID documentID = new DocumentID(2012, 2, 28, "DA41", "LLC", 
+				"POL_MON1");
+		Metadata metadata = new Metadata(documentID, "ASDF Property", "TFING",
+				"as76d6fh", 2, MongoManager.DEFAULT_PREALLOCATE_TIME);
+		
+		for (int i=0; i<MongoManager.MAX_VALUE_SIZE; i++) {
+			coll.insert(MongoManager.getPreallocatedDocument(metadata,i));
+		}
+	}
 }
