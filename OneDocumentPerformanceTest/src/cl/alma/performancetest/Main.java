@@ -27,19 +27,19 @@ public class Main {
 
 	/* 
 	public static final int ANTENNAS = 70;
-	public static final int COMPONENT_PER_ANTENNA = 5; 
-	public static final int MONITOR_POINTS_PER_COMPONENT = 1430;
+	public static final int COMPONENT_PER_ANTENNA = 41; 
+	public static final int MONITOR_POINTS_PER_COMPONENT = 35;
 	public static final int DAYS = 30;
 	public static final int MONTH = 1;
 	public static final int YEAR = 2013;
 	/*  */
 	
 	/*  */
-	public static final int ANTENNAS = 2;
-	public static final int COMPONENT_PER_ANTENNA = 3;
-	public static final int MONITOR_POINT_PER_COMPONENT = 5;
-	public static final int DAYS = 3;
-	public static final int MONTH = 1;
+	public static final int ANTENNAS = 70;
+	public static final int COMPONENT_PER_ANTENNA = 41;
+	public static final int MONITOR_POINT_PER_COMPONENT = 35;
+	public static final int DAYS = 1;
+	public static final int MONTH = 2;
 	public static final int YEAR = 2013;
 	/*  */
 	
@@ -51,7 +51,7 @@ public class Main {
 		DB database = null;
 		try {
 			//mongo = new Mongo("localhost");
-			mongo = new Mongo("mongo-r1.osf.alma.cl");
+			mongo = new Mongo("mongo-r2.osf.alma.cl");
 			database = mongo.getDB("OneDocumentPerformanceTest");
 		} catch (UnknownHostException e) {
 			e.printStackTrace();
@@ -61,7 +61,7 @@ public class Main {
 		MongoManager.setConnection(mongo, database);
 		MongoManager mongoManager = MongoManager.mongoManagerFactory(null);
 		DBCollection collection = database.getCollection("monitorData_"+MONTH);
-
+		
 		for (int day=1; day<=DAYS; day++) {
 			for (int antenna=1; antenna<=ANTENNAS; antenna++) {
 				for (int component=1; component<=COMPONENT_PER_ANTENNA; component++) {
@@ -78,7 +78,9 @@ public class Main {
 								day, 0, 0, 0);
 						
 						// 5 is the size of the values for the monitoring point 
-						collection.insert(mongoManager.preAllocate(meta, tStart.getTime(), 5));
+						//collection.insert(mongoManager.preAllocate(meta, tStart.getTime(), 5));
+						//collection.insert(mongoManager.preAllocate(meta,5));
+						collection.insert(MongoManager.getPreallocatedDocument(meta,5));
 					}
 				}
 			}
